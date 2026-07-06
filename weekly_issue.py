@@ -16,6 +16,10 @@ import json
 import os
 import shutil
 
+def safe_url(u):
+    """Ссылка из чужого поста идёт в href только с http(s)-схемой — иначе '#' (анти-XSS)."""
+    return u if isinstance(u, str) and u.startswith(("http://", "https://")) else "#"
+
 from reddit_ai_score import source_label, run_claude, parse_batch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -185,7 +189,7 @@ def render_html(issue):
             '<h2>%s</h2><blockquote>%s</blockquote>'
             '<a class="go" href="%s">Source &#8599;</a></article>'
             % (i, e(strip_src_emoji(t.get("source", ""))), cnt,
-               e(t["label"]), e(t.get("quote", "")), e(t.get("url", ""))))
+               e(t["label"]), e(t.get("quote", "")), e(safe_url(t.get("url", "")))))
     head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<title>%s · week %s</title><style>%s</style></head><body><div class="wrap">'

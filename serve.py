@@ -72,6 +72,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 logf = open(os.path.join(OUT, "ai-run.log"), "a")
                 subprocess.Popen([sys.executable, SCRIPT, "--trigger", "manual"],
                                  cwd=HERE, stdout=logf, stderr=logf, start_new_session=True)
+                logf.close()                   # ребёнок держит свою копию; без close текла ручка на каждый /run
             self.send_response(302)
             self.send_header("Location", "/")
             self.end_headers()

@@ -15,6 +15,10 @@ import os
 import re
 import sys
 
+def safe_url(u):
+    """Ссылка из чужого поста идёт в href только с http(s)-схемой — иначе '#' (анти-XSS)."""
+    return u if isinstance(u, str) and u.startswith(("http://", "https://")) else "#"
+
 CARD_RE = re.compile(r"^##\s+\[([^\]]+)\]\s+(.*)$")
 META_RE = re.compile(r"^—\s+(.*)$")
 MATCHED_RE = re.compile(r"matched\s+`([^`]+)`")
@@ -58,7 +62,7 @@ def _card_html(c):
     quote = f'<blockquote class="quote">{e(c["quote"])}</blockquote>' if c["quote"] else ""
     return (
         f'<article class="card">'
-        f'<a class="t" href="{e(c["url"])}" target="_blank" rel="noopener">{e(c["title"])}</a>'
+        f'<a class="t" href="{e(safe_url(c["url"]))}" target="_blank" rel="noopener">{e(c["title"])}</a>'
         f'<div class="badges"><span class="badge src">{e(c["site"])}</span></div>'
         f'{quote}'
         f'<div class="meta">{e(c["meta"])}</div>'

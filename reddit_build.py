@@ -16,6 +16,10 @@ import os
 import re
 import sys
 
+def safe_url(u):
+    """Ссылка из чужого поста идёт в href только с http(s)-схемой — иначе '#' (анти-XSS)."""
+    return u if isinstance(u, str) and u.startswith(("http://", "https://")) else "#"
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "out")
 
@@ -253,7 +257,7 @@ def render(items, title):
                          f'<div class="more-why">🔥{it["score"]} · {e(it["why"])}</div>')
 
         return (f'<article class="card">'
-                f'<a class="t" href="{e(it["url"])}" target="_blank" rel="noopener">{headline_html}</a>'
+                f'<a class="t" href="{e(safe_url(it["url"]))}" target="_blank" rel="noopener">{headline_html}</a>'
                 f'<div class="meta"><span class="sig">{sig_html}</span> · {e(src)}{c}</div>'
                 f'<details class="more"><summary>полный текст · почему</summary>{details_inner}</details>'
                 f'</article>')

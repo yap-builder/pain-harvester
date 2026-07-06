@@ -103,3 +103,15 @@ class TestRenderHtml(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSafeUrl(unittest.TestCase):
+    def test_javascript_scheme_blocked(self):
+        self.assertEqual(w.safe_url("javascript:alert(1)"), "#")
+
+    def test_https_passes(self):
+        u = "https://news.ycombinator.com/item?id=1"
+        self.assertEqual(w.safe_url(u), u)
+
+    def test_non_string_blocked(self):
+        self.assertEqual(w.safe_url(None), "#")
