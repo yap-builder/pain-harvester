@@ -39,7 +39,7 @@ Real run (2026-07-02): 157 posts -> 11 promo cut -> 39 pains with verified quote
 ## Honest status
 
 - Works: the full weekly pipeline end-to-end (fetch -> triage -> score -> issue),
-  78 unit tests, runs on a schedule via launchd on my Mac.
+  95 unit tests, runs on a schedule via launchd on my Mac.
 - Rough edges: subreddit list and pain queries are hardcoded to my domains
   (AI agents / dev tools / indie SaaS); Reddit crawling needs Playwright WebKit
   (Chromium gets bot-blocked); the LLM steps assume a local `claude` CLI.
