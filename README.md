@@ -44,6 +44,11 @@ Real run (2026-07-02): 157 posts -> 11 promo cut -> 39 pains with verified quote
   (AI agents / dev tools / indie SaaS); Reddit crawling needs Playwright WebKit
   (Chromium gets bot-blocked); the LLM steps assume a local `claude` CLI.
 - Not included: my scraped data (`out/` is gitignored) — run it yourself.
+- Terms of service: Reddit is crawled with a headless browser, which their ToS
+  does not welcome — this is a personal research tool, run it accordingly (low
+  volume, anonymous read-only, no republishing of full posts). HN is fetched via
+  the public Algolia API. StackExchange content is CC BY-SA; it stays in the
+  local digest and is excluded from the published issue by default.
 
 ## Run
 
