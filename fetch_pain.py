@@ -79,11 +79,15 @@ def hn_item_url(hit):
     return f"https://news.ycombinator.com/item?id={oid}"
 
 
-def fetch_hn(query, limit=20, min_points=0, kind="(story,comment)"):
+def fetch_hn(query, limit=20, min_points=0, kind="(story,comment)", days=0):
     params = {"query": query, "tags": kind, "hitsPerPage": min(int(limit), 50)}
     nf = []
     if min_points:
         nf.append(f"points>={int(min_points)}")
+    if days:
+        # свежесть: без этого фильтра «выпуск недели» тянул посты 2023 года (пойман ревью 07-05)
+        since = int(datetime.now(timezone.utc).timestamp()) - int(days) * 86400
+        nf.append(f"created_at_i>={since}")
     if nf:
         params["numericFilters"] = ",".join(nf)
     data = _get(HN_API + "?" + urlencode(params))
@@ -107,11 +111,13 @@ def fetch_hn(query, limit=20, min_points=0, kind="(story,comment)"):
 
 
 # ---------- StackExchange (API 2.3, без ключа) ----------
-def fetch_se(query, site="stackoverflow", limit=20, min_score=0, key=None):
+def fetch_se(query, site="stackoverflow", limit=20, min_score=0, key=None, days=0):
     params = {
         "order": "desc", "sort": "relevance", "q": query,
         "site": site, "pagesize": min(int(limit), 100), "filter": "withbody",
     }
+    if days:
+        params["fromdate"] = int(datetime.now(timezone.utc).timestamp()) - int(days) * 86400
     if key:
         params["key"] = key
     data = _get(SE_API + "?" + urlencode(params))
@@ -205,6 +211,8 @@ def main():
     ap.add_argument("--out", default="./out", help="папка дайджеста")
     ap.add_argument("--label", default="", help="метка темы в имени файла")
     ap.add_argument("--sleep", type=float, default=0.5, help="пауза между запросами, сек")
+    ap.add_argument("--days", type=int, default=14,
+                    help="свежесть: только посты за N дней (0 = без фильтра)")
     args = ap.parse_args()
 
     queries = load_queries(args.queries)
@@ -217,7 +225,7 @@ def main():
     for q in queries:
         if "hn" in sources:
             try:
-                for c in fetch_hn(q, args.limit, args.min_points):
+                for c in fetch_hn(q, args.limit, args.min_points, days=args.days):
                     if c["url"] not in seen:
                         seen.add(c["url"]); all_cards.append(c)
             except (URLError, HTTPError, ValueError, RuntimeError) as e:
@@ -226,7 +234,7 @@ def main():
         if "se" in sources:
             for site in se_sites:
                 try:
-                    cards, quota = fetch_se(q, site, args.limit, args.min_score, args.se_key)
+                    cards, quota = fetch_se(q, site, args.limit, args.min_score, args.se_key, days=args.days)
                     for c in cards:
                         if c["url"] not in seen:
                             seen.add(c["url"]); all_cards.append(c)
