@@ -115,3 +115,14 @@ class TestSafeUrl(unittest.TestCase):
 
     def test_non_string_blocked(self):
         self.assertEqual(w.safe_url(None), "#")
+
+
+class TestMembersProof(unittest.TestCase):
+    def test_count_backed_by_member_urls(self):
+        pains = [{"url": "https://a", "evidence_quote": "q1", "ai_score": 5, "score": 1},
+                 {"url": "https://b", "evidence_quote": "q2", "ai_score": 3, "score": 1}]
+        themes = [{"label": "t", "members": [0, 1]}]
+        issue = w.issue_data(pains, themes, top_n=5, week="2026-W01")
+        t = issue["themes"][0]
+        self.assertEqual(t["count"], len(t["members"]))
+        self.assertEqual([m["url"] for m in t["members"]], ["https://a", "https://b"])

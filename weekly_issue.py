@@ -108,7 +108,10 @@ def issue_data(pains, themes, top_n=TOP_N, week=""):
         rep = representative(t, pains)
         out.append({"label": t["label"], "count": len(t["members"]),
                     "quote": rep.get("evidence_quote", ""), "url": rep.get("url", ""),
-                    "source": source_label(rep), "ai_score": rep.get("ai_score")})
+                    "source": source_label(rep), "ai_score": rep.get("ai_score"),
+                    # пруф счётчика: «N×» проверяемо только если члены группы названы (URL каждого)
+                    "members": [{"url": pains[i].get("url", ""),
+                                 "source": source_label(pains[i])} for i in t["members"]]})
     return {"week": week, "pains_total": len(pains), "themes": out}
 
 
