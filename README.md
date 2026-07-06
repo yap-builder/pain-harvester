@@ -1,5 +1,7 @@
 # pain-harvester
 
+![tests](https://github.com/yap-builder/pain-harvester/actions/workflows/tests.yml/badge.svg)
+
 Scrapes dev communities (Reddit, Hacker News) for posts where people describe real
 problems, filters out promo and hallucinated "pain", and compiles a weekly top-5
 digest — every pain backed by a verbatim quote from the original post.
@@ -39,7 +41,7 @@ Real run (2026-07-02): 157 posts -> 11 promo cut -> 39 pains with verified quote
 ## Honest status
 
 - Works: the full weekly pipeline end-to-end (fetch -> triage -> score -> issue),
-  95 unit tests, runs on a schedule via launchd on my Mac.
+  full unit-test suite (`pytest`, green in CI), runs on a schedule via launchd on my Mac.
 - Rough edges: subreddit list and pain queries are hardcoded to my domains
   (AI agents / dev tools / indie SaaS); Reddit crawling needs Playwright WebKit
   (Chromium gets bot-blocked); the LLM steps assume a local `claude` CLI.
