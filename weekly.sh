@@ -1,6 +1,6 @@
 #!/bin/bash
-# pain-harvester · недельный «собиратель»: свежий AI-проход (с гейтами) → выпуск → пинок.
-# Анти-заморозка: дедлайн стоит на ОТПРАВКЕ, не на сборке — уведомление это и говорит.
+# pain-harvester · weekly "collector": fresh AI pass (with gates) → issue → nudge.
+# Anti-freeze: the deadline sits on SENDING, not on assembling — the notification says exactly that.
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR" || exit 1
@@ -9,5 +9,5 @@ python3 reddit_ai_score.py --trigger weekly 2>&1
 echo "--- score rc=$? ---"
 python3 weekly_issue.py 2>&1
 echo "--- issue rc=$? ---"
-osascript -e 'display notification "Выпуск болей готов (out/weekly/latest.html + txt). Отправь до вечера воскресенья." with title "pain-harvester · собиратель"' 2>/dev/null
+osascript -e 'display notification "The pain issue is ready (out/weekly/latest.html + txt). Send it before Sunday evening." with title "pain-harvester · collector"' 2>/dev/null
 echo "================= $(date '+%H:%M:%S') WEEKLY DONE ================="

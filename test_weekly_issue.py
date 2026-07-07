@@ -1,4 +1,4 @@
-"""Тесты чистой логики собирателя (без claude, без файлов)."""
+"""Tests for the collector's pure logic (no claude, no files)."""
 import re
 import unittest
 
@@ -33,7 +33,7 @@ class TestIssueData(unittest.TestCase):
                   {"label": "sales", "members": [1, 2]}]
         issue = w.issue_data(P, themes, top_n=1, week="2026-W27")
         self.assertEqual(len(issue["themes"]), 1)
-        self.assertEqual(issue["themes"][0]["label"], "sales")   # 2 человека > 1
+        self.assertEqual(issue["themes"][0]["label"], "sales")   # 2 people > 1
         self.assertEqual(issue["themes"][0]["count"], 2)
         self.assertEqual(issue["themes"][0]["quote"], "I keep losing deals")
 
@@ -47,19 +47,20 @@ class TestRenderTxt(unittest.TestCase):
     def test_no_first_person_and_has_quotes_urls(self):
         issue = w.issue_data(P, w.identity_themes(P), top_n=5, week="2026-W27")
         txt = w.render_txt(issue)
-        self.assertIn("I keep losing deals", txt)      # цитата (её «I» — автора боли, ок)
+        self.assertIn("I keep losing deals", txt)      # the quote (its "I" belongs to the pain author, ok)
         self.assertIn("https://b", txt)
-        # рамка: сервис, не первое лицо. Гейт по ГРАНИЦЕ слова, а не подстроке:
-        # наивное "я " ловит ложные срабатывания внутри слов ("каждаЯ ") — это не первое лицо.
-        self.assertIsNone(re.search(r"(?i)\b(я|мой|моя|мою)\b", txt.replace("\n", " ")),
-                          "рамка выпуска не должна содержать первого лица")
+        # framing: a service, not first person. Gate on WORD boundaries, not substrings,
+        # and only on frame lines (quote/url lines are indented — the quote's own "I" is fine).
+        frame = " ".join(l for l in txt.splitlines() if not l.startswith("   "))
+        self.assertIsNone(re.search(r"(?i)\b(i|my|me|we|our)\b", frame),
+                          "the issue framing must not contain first person")
 
 
 class TestValidateThemes(unittest.TestCase):
     def test_dedups_ids_across_themes_and_drops_out_of_range(self):
         raw = [{"theme": "sales", "members": [1, 2, 2, 99]},
                {"theme": "dup", "members": [1]},
-               "мусор"]
+               "garbage"]
         themes, uncovered = w.validate_themes(raw, n=3)
         self.assertEqual(themes, [{"label": "sales", "members": [1, 2]}])
         self.assertEqual(uncovered, [0])
@@ -73,7 +74,7 @@ class TestValidateThemes(unittest.TestCase):
 class TestBuildThemesFallback(unittest.TestCase):
     def test_runner_failure_falls_back_to_identity(self):
         def boom(prompt, model=None):
-            raise RuntimeError("claude недоступен")
+            raise RuntimeError("claude unavailable")
         ts = w.build_themes(P, use_ai=True, runner=boom)
         self.assertEqual(ts, w.identity_themes(P))
 
@@ -86,19 +87,19 @@ class TestRenderHtml(unittest.TestCase):
 
     def test_quote_present_and_escaped_no_js(self):
         page = w.render_html(self._issue('he said <b>"ship"</b> & it broke'))
-        self.assertIn("&lt;b&gt;", page)                 # опасный html экранирован
-        self.assertNotIn('<b>"ship"', page)              # нет сырого html из данных
-        self.assertNotIn("<script", page.lower())        # без JS (правило телефона)
-        self.assertNotIn("http-equiv", page.lower())     # без meta-refresh
-        self.assertIn("https://x", page)                 # ссылка из источника
-        self.assertIn("2&times; reported", page)         # счётчик многолюдной темы (html-сущность)
-        self.assertIn("<details", page)                  # легенда — нативный details (без JS)
-        self.assertIn("how to read this page", page)   # свёрнутая легенда на месте
+        self.assertIn("&lt;b&gt;", page)                 # dangerous html is escaped
+        self.assertNotIn('<b>"ship"', page)              # no raw html from the data
+        self.assertNotIn("<script", page.lower())        # no JS (the phone rule)
+        self.assertNotIn("http-equiv", page.lower())     # no meta-refresh
+        self.assertIn("https://x", page)                 # link comes from the source
+        self.assertIn("2&times; reported", page)         # counter for a multi-person theme (html entity)
+        self.assertIn("<details", page)                  # legend is a native details (no JS)
+        self.assertIn("how to read this page", page)   # collapsed legend is in place
 
     def test_source_emoji_stripped(self):
         page = w.render_html(self._issue("real pain here"))
         self.assertIn("r/SaaS", page)
-        self.assertNotIn("🔴", page)                      # цветной кружок снят в N2-скине
+        self.assertNotIn("🔴", page)                      # colored dot stripped in the N2 skin
 
 
 if __name__ == "__main__":

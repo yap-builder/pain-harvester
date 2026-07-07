@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Гибрид N1xN2: чистая воздушная база (N1) + сырой характер брутализма (N2).
-demo-issue.json → out/weekly/mockup-n1x2-demo.html. Без JS, self-contained."""
+"""N1xN2 hybrid: clean airy base (N1) + raw brutalist character (N2).
+demo-issue.json → out/weekly/mockup-n1x2-demo.html. No JS, self-contained."""
 import html
 import json
 import os
@@ -52,26 +52,26 @@ blockquote::before{content:"\\201C"}blockquote::after{content:"\\201D"}
 def rows():
     out = []
     for i, t in enumerate(issue["themes"], 1):
-        c = ('<span class="chip cnt">%d&times; сообщали</span>' % t["count"]) if t.get("count", 1) > 1 else ""
+        c = ('<span class="chip cnt">%d&times; reported</span>' % t["count"]) if t.get("count", 1) > 1 else ""
         out.append(
             '<article class="item"><div class="num">%02d</div>'
             '<div class="kick"><span class="chip">%s</span>%s</div>'
             '<h2>%s</h2><blockquote>%s</blockquote>'
-            '<a class="go" href="%s">Источник &#8599;</a></article>'
+            '<a class="go" href="%s">Source &#8599;</a></article>'
             % (i, e(src(t)), c, e(t["label"]), e(t["quote"]), e(t["url"])))
     return "\n".join(out)
 
 
 inner = ('<div class="brand"><span class="m">&#9670; ' + MARK + '</span>'
-         '<span class="e">неделя ' + W + '</span></div>'
-         '<h1>С чем бьётся<br>dev-сообщество</h1>'
-         '<p class="promise">Топ-' + N + ' болей недели с Reddit и Hacker News. Каждая &mdash; '
-         '<b>дословная цитата</b> из поста. Без пересказа, без промо.</p>'
+         '<span class="e">week ' + W + '</span></div>'
+         '<h1>What the dev community<br>is struggling with</h1>'
+         '<p class="promise">Top-' + N + ' pains of the week from Reddit and Hacker News. Each one is '
+         'a <b>verbatim quote</b> from the post. No paraphrase, no promo.</p>'
          '<div class="hr"></div>' + rows() +
-         '<footer class="foot"><div class="cta">Полезно? Выходит <b>каждую неделю</b>.</div>'
-         'Метод: дословная цитата из тела поста, отсев промо, группировка похожих болей в темы.</footer>')
+         '<footer class="foot"><div class="cta">Useful? Comes out <b>every week</b>.</div>'
+         'Method: verbatim quote from the post body, promo filtered out, similar pains grouped into themes.</footer>')
 
-s = ('<!doctype html><html lang="ru"><head><meta charset="utf-8">'
+s = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
      '<meta name="viewport" content="width=device-width,initial-scale=1">'
      '<title>' + MARK + ' · ' + W + '</title><style>' + CSS + '</style></head>'
      '<body><div class="wrap">' + inner + '</div></body></html>')

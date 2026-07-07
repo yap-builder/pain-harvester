@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Конвертер pain-дайджеста (.md от fetch_pain.py) → самодостаточный .html.
+"""Converter: pain digest (.md from fetch_pain.py) → self-contained .html.
 
-Использование:
+Usage:
   python3 digest_to_html.py out/2026-06-23-pain-core20.md
   python3 digest_to_html.py out/2026-06-23-pain-core20.md --out custom.html
 
-Пишет рядом одноимённый .html. Зависимостей нет. Фразы (заготовленные, matched) идут
-кнопками-чипами со счётчиком — кликаешь, не печатаешь. Доп.поиск по тексту — опционально.
+Writes a same-named .html next to the input. No dependencies. Phrases (predefined, matched)
+appear as chip buttons with counters — you click instead of typing. Extra text search is optional.
 """
 import argparse
 import html
@@ -16,7 +16,7 @@ import re
 import sys
 
 def safe_url(u):
-    """Ссылка из чужого поста идёт в href только с http(s)-схемой — иначе '#' (анти-XSS)."""
+    """A link from someone else's post goes into href only with an http(s) scheme — otherwise '#' (anti-XSS)."""
     return u if isinstance(u, str) and u.startswith(("http://", "https://")) else "#"
 
 CARD_RE = re.compile(r"^##\s+\[([^\]]+)\]\s+(.*)$")
@@ -25,7 +25,7 @@ MATCHED_RE = re.compile(r"matched\s+`([^`]+)`")
 
 
 def parse(md_text):
-    """Грубый, но устойчивый парс формата fetch_pain.py."""
+    """Rough but robust parser for the fetch_pain.py format."""
     cards = []
     cur = None
     for line in md_text.splitlines():
@@ -71,13 +71,13 @@ def _card_html(c):
 
 
 def render(cards, title):
-    """Полностью статичный HTML, без JavaScript. Карточки сгруппированы по matched-фразе
-    в нативные <details> — разворачиваются кликом, работают в любой смотрелке."""
+    """Fully static HTML, no JavaScript. Cards are grouped by matched phrase
+    into native <details> — they expand on click and work in any viewer."""
     e = html.escape
     groups = {}
     for c in cards:
-        groups.setdefault(c["matched"] or "(без фразы)", []).append(c)
-    # фразы по убыванию числа карточек
+        groups.setdefault(c["matched"] or "(no phrase)", []).append(c)
+    # phrases sorted by descending card count
     order = sorted(groups, key=lambda k: -len(groups[k]))
 
     sections = []
@@ -99,7 +99,7 @@ def render(cards, title):
         )
     body = "\n".join(sections)
 
-    return f"""<!doctype html><html lang="ru"><head>
+    return f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(title)}</title>
 <style>
@@ -125,7 +125,7 @@ details[open] summary::before{{content:"▾"}}
 .meta{{color:#6e7681;font-size:11px;margin-top:6px}}
 </style></head><body>
 <header><h1>{e(title)}</h1>
-<div class="sub">{len(cards)} карточек · сгруппировано по фразам · тапни фразу, чтобы раскрыть · без скриптов</div>
+<div class="sub">{len(cards)} cards · grouped by phrase · tap a phrase to expand · no scripts</div>
 </header>
 <main>
 {body}
@@ -139,17 +139,17 @@ def main():
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     if not os.path.isfile(args.md):
-        sys.exit(f"нет файла: {args.md}")
+        sys.exit(f"file not found: {args.md}")
     with open(args.md, encoding="utf-8") as f:
         text = f.read()
     cards = parse(text)
     if not cards:
-        sys.exit("карточки не распознаны — формат дайджеста другой?")
+        sys.exit("no cards recognized — different digest format?")
     title = text.splitlines()[0].lstrip("# ").strip() or "pain digest"
     out = args.out or os.path.splitext(args.md)[0] + ".html"
     with open(out, "w", encoding="utf-8") as f:
         f.write(render(cards, title))
-    print(f"OK: {len(cards)} карточек → {out}")
+    print(f"OK: {len(cards)} cards → {out}")
 
 
 if __name__ == "__main__":

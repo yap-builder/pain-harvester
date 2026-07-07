@@ -1,4 +1,4 @@
-"""Тесты чистого ядра reddit_ai_score (без вызова claude)."""
+"""Tests for the pure core of reddit_ai_score (no claude calls)."""
 import unittest
 
 import fetch_pain
@@ -47,7 +47,7 @@ class TestParseBatch(unittest.TestCase):
 
 class TestMergeVerdicts(unittest.TestCase):
     def setUp(self):
-        # title = заголовок + '\n\n' + тело; цитата-пруф обязана прийти из ТЕЛА (гейт P0#3)
+        # title = headline + '\n\n' + body; the proof quote must come from the BODY (gate P0#3)
         self.cands = [
             {"title": "I keep losing customers\n\nonboarding is broken and users churn before activating.", "url": "u0", "score": 5},
             {"title": "Anyone else struggle here?\n\nwe copy numbers between spreadsheets every single day.", "url": "u1", "score": 4},
@@ -62,7 +62,7 @@ class TestMergeVerdicts(unittest.TestCase):
         ]
         kept, counts = r.merge_verdicts(self.cands, verdicts)
         self.assertEqual(len(kept), 2)
-        self.assertEqual(kept[0]["url"], "u0")        # url из источника, не от модели
+        self.assertEqual(kept[0]["url"], "u0")        # url from the source, not from the model
         self.assertEqual(kept[0]["ai_score"], 5)
         self.assertEqual(counts["kept"], 2)
         self.assertEqual(counts["dropped_ai_no"], 1)
@@ -164,13 +164,13 @@ class TestBuildPrompt(unittest.TestCase):
         self.assertIn("POST 1", p)
         self.assertIn("onboarding is broken", p)
         self.assertIn("manual data entry", p)
-        # требует дословную цитату + строгий JSON
+        # requires a verbatim quote + strict JSON
         self.assertIn("evidence_quote", p)
 
     def test_caps_long_post_text(self):
         batch = [{"title": "x" * 5000, "url": "u0"}]
         p = r.build_prompt(batch)
-        self.assertLess(len(p), 4000)  # длинный пост урезан в промпте
+        self.assertLess(len(p), 4000)  # a long post is trimmed in the prompt
 
 
 class TestScoreBatch(unittest.TestCase):
@@ -200,8 +200,8 @@ class TestRender(unittest.TestCase):
         }]
         out = r.render(items, "t")
         self.assertIn("https://reddit.com/x", out)
-        self.assertIn("&lt;b&gt;", out)               # экранировано
-        self.assertNotIn('<b>"stop"', out)            # нет сырого html из данных
+        self.assertIn("&lt;b&gt;", out)               # escaped
+        self.assertNotIn('<b>"stop"', out)            # no raw html from the data
         self.assertIn("real churn", out)
 
     def test_orders_higher_ai_score_first(self):
@@ -248,7 +248,7 @@ class TestIfChanged(unittest.TestCase):
         self.assertEqual(r.last_run_hash(runs), "h1")
 
     def test_last_run_hash_empty_when_none_completed(self):
-        runs = [r.new_run("r1", "cron", "h1", "t0")]  # ещё running
+        runs = [r.new_run("r1", "cron", "h1", "t0")]  # still running
         self.assertEqual(r.last_run_hash(runs), "")
 
     def test_source_hash_of_file(self):
@@ -271,9 +271,9 @@ class TestCardsHtml(unittest.TestCase):
         items = [{"url": "u", "ai_score": 5, "ai_reason": "cannot identify ICP",
                   "evidence_quote": "our onboarding is broken", "sources": ["SaaS"]}]
         h = r.cards_html(items)
-        self.assertIn("cannot identify ICP", h)            # боль
-        self.assertIn("onboarding", h)                     # пруф
-        self.assertLess(h.index("cannot identify ICP"), h.index("onboarding"))  # боль раньше пруфа
+        self.assertIn("cannot identify ICP", h)            # the pain
+        self.assertIn("onboarding", h)                     # the proof
+        self.assertLess(h.index("cannot identify ICP"), h.index("onboarding"))  # pain before proof
 
 
 class TestViewPage(unittest.TestCase):
@@ -282,13 +282,13 @@ class TestViewPage(unittest.TestCase):
                   "evidence_quote": "quote Y here", "sources": []}]
         page = r.view_page(items, {"updated": "now", "n": 1, "running": False, "runs": []})
         self.assertIn('href="/run"', page)
-        self.assertIn("reddit-pain.html", page)            # ссылка на источник
+        self.assertIn("reddit-pain.html", page)            # link to the source
         self.assertIn("pain X", page)
 
     def test_running_state_has_meta_refresh(self):
         page = r.view_page([], {"updated": "now", "n": 0, "running": True, "runs": []})
-        self.assertIn("http-equiv", page.lower())          # meta refresh без JS
-        self.assertIn("идёт", page)
+        self.assertIn("http-equiv", page.lower())          # meta refresh, no JS
+        self.assertIn("in progress", page)
 
     def test_includes_hn_se_digest_link_when_present(self):
         page = r.view_page([], {"updated": "now", "n": 0, "running": False, "runs": [],
@@ -319,7 +319,7 @@ class TestParseHnse(unittest.TestCase):
         items = r.parse_hnse(self.MD)
         self.assertEqual(len(items), 2)
         self.assertIn("Manual data entry", items[0]["title"])
-        self.assertIn("copying numbers between spreadsheets", items[0]["title"])  # quote вошёл
+        self.assertIn("copying numbers between spreadsheets", items[0]["title"])  # quote made it in
 
     def test_score_parsed_from_meta(self):
         self.assertEqual(r.parse_hnse(self.MD)[0]["score"], 1280)
@@ -341,7 +341,7 @@ class TestParseHnse(unittest.TestCase):
         self.assertEqual(r.parse_hnse(self.MD)[0]["url"], "https://news.ycombinator.com/item?id=111")
 
     def test_quote_validates_against_packed_title(self):
-        # гейт: дословный кусок quote находится в title-поле, которое валидирует merge_verdicts
+        # gate: a verbatim piece of quote is present in the title field validated by merge_verdicts
         items = r.parse_hnse(self.MD)
         self.assertTrue(r.quote_in_source("onboarding flow is broken", items[1]["title"]))
 
@@ -355,12 +355,12 @@ class TestSelectHnse(unittest.TestCase):
 
     def test_hn_only_drops_se_by_default(self):
         out = r.select_hnse(self.ITEMS, top=10)
-        self.assertEqual([x["origin"] for x in out], ["hn", "hn"])  # SE отброшен
+        self.assertEqual([x["origin"] for x in out], ["hn", "hn"])  # SE dropped
 
     def test_include_se_keeps_both(self):
         out = r.select_hnse(self.ITEMS, top=10, include_se=True)
         self.assertEqual(len(out), 3)
-        self.assertEqual(out[0]["origin"], "se")  # SE score 9000 наверх при общем ранжире
+        self.assertEqual(out[0]["origin"], "se")  # SE score 9000 rises to the top in the shared ranking
 
     def test_top_caps_hn(self):
         self.assertEqual(len(r.select_hnse(self.ITEMS, top=1)), 1)

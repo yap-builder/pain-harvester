@@ -1,32 +1,32 @@
-# фразы-боли для харвеста (одна на строку, # = коммент)
-# курированный набор под мои домены (AI-агенты / dev-tools / автоматизация), 20 фраз, 2026-06-23
+# pain phrases for the harvest (one per line, # = comment)
+# curated set for my domains (AI agents / dev-tools / automation), 20 phrases, 2026-06-23
 
-# A. AI-агенты / «заставить LLM работать»
+# A. AI agents / "getting the LLM to work"
 my agent keeps
 how do I get Claude to
 struggling to make my agent reliable
 anyone else fighting with context
 is there a framework for
 
-# B. Автоматизация / «что построить» (demand-signal)
+# B. Automation / "what to build" (demand signal)
 is there a tool that
 how do I automate
 tired of doing this manually
 wish there was a way to
 looking for a way to
 
-# C. Founder / SaaS-боль (доход-keystone)
+# C. Founder / SaaS pain (revenue keystone)
 how do I find my first users
 struggling to get
 built this but no one uses it
 is it worth building
 what am I missing
 
-# D. Крипта / трейдинг
+# D. Crypto / trading
 how do I automate my trading
 looking for a bot that
 is there an API for
 
-# E. Универсальные маркеры боли
+# E. Universal pain markers
 spent days trying to
 can't figure out how to

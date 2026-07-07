@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Headless-фетч reddit для pain-harvester (ярус B: автоматизация фетча).
+"""Headless reddit fetch for pain-harvester (tier B: fetch automation).
 
-ЗАЧЕМ: раньше reddit собирался ТОЛЬКО вручную через MCP-браузер в сессии — поэтому
-вход скорера (`reddit-pain.json`) замерзал, а ночной `--if-changed` честно скипал. Этот
-скрипт делает сбор фоновым: headless playwright-WEBKIT (chromium ловит бот-блок reddit
-«network security» — webkit проходит js-challenge) обходит /new/ каждого саба, тянет
-посты и пишет ЕДИНЫЙ `out/reddit-raw-batch-latest.json` в формате reddit_build.py:
+WHY: previously reddit was collected ONLY manually via the MCP browser in a session — so
+the scorer's input (`reddit-pain.json`) froze, and the nightly `--if-changed` honestly skipped.
+This script makes collection a background job: headless playwright-WEBKIT (chromium hits
+reddit's "network security" bot block — webkit passes the js-challenge) walks /new/ of each
+sub, pulls posts and writes a SINGLE `out/reddit-raw-batch-latest.json` in reddit_build.py format:
     [{sub, count, posts:[{url, title, comments}]}]
-`title` = заголовок + превью тела (по нему скоринг и гейт цитаты). Анонимно, паузами.
+`title` = headline + body preview (used for scoring and the quote gate). Anonymous, with pauses.
 
-Запуск: venv/bin/python reddit_fetch.py   (см. nightly.sh — первый ярус ночной джобы).
+Run: venv/bin/python reddit_fetch.py   (see nightly.sh — the first tier of the nightly job).
 """
 import json
 import os
@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "out")
 LATEST = os.path.join(OUT, "reddit-raw-batch-latest.json")
 
-# те же сабы, что и в ручном сборе (AI-агенты / dev-tools / founder / крипта)
+# same subs as in the manual collection (AI agents / dev-tools / founder / crypto)
 SUBS = [
     "SaaS", "SideProject", "indiehackers", "Agent_AI", "ClaudeAI",
     "PromptEngineering", "Appstore", "ArtificialInteligence",
@@ -32,7 +32,7 @@ SUBS = [
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
       "(KHTML, like Gecko) Version/17.0 Safari/605.1.15")
 
-# извлекатель ленты: полный заголовок + превью тела из карточки (не обрезанный атрибут)
+# feed extractor: full title + body preview from the card (not the truncated attribute)
 EXTRACT = r"""() => {
   const posts = [];
   const seen = new Set();
@@ -53,13 +53,13 @@ EXTRACT = r"""() => {
 
 
 def fetch_sub(page, sub, tries=2):
-    """Открыть /new/ саба, дождаться ленты, подгрузить скроллом, вернуть посты."""
+    """Open the sub's /new/, wait for the feed, load more by scrolling, return posts."""
     url = "https://www.reddit.com/r/%s/new/" % sub
     for attempt in range(1, tries + 1):
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=45000)
             page.wait_for_selector("shreddit-post", timeout=20000)
-            # лениво-грузящаяся лента: пара скроллов, чтобы набрать ~25 постов
+            # lazily-loading feed: a couple of scrolls to gather ~25 posts
             for _ in range(3):
                 page.mouse.wheel(0, 4000)
                 page.wait_for_timeout(1200)
@@ -67,7 +67,7 @@ def fetch_sub(page, sub, tries=2):
             if posts:
                 return posts
         except Exception as e:
-            print("  [warn] r/%s попытка %d: %s" % (sub, attempt, str(e)[:110]), file=sys.stderr)
+            print("  [warn] r/%s attempt %d: %s" % (sub, attempt, str(e)[:110]), file=sys.stderr)
         time.sleep(3)
     return []
 
@@ -83,18 +83,18 @@ def main():
             posts = fetch_sub(page, sub)
             groups.append({"sub": sub, "count": len(posts), "posts": posts})
             total += len(posts)
-            print("  r/%-22s %3d постов" % (sub, len(posts)))
+            print("  r/%-22s %3d posts" % (sub, len(posts)))
             if i + 1 < len(SUBS):
-                time.sleep(2.5)  # вежливая пауза между сабами
+                time.sleep(2.5)  # polite pause between subs
         br.close()
 
     ok_subs = sum(1 for g in groups if g["count"] > 0)
-    # страховка: пустой сбор НЕ перезаписывает хороший latest (иначе build обнулит вход)
+    # safeguard: an empty collection does NOT overwrite a good latest (otherwise build would zero the input)
     if total == 0:
-        print("ПУСТО: 0 постов со всех сабов — latest не трогаю (бот-блок? сеть?)", file=sys.stderr)
+        print("EMPTY: 0 posts from all subs — leaving latest untouched (bot block? network?)", file=sys.stderr)
         sys.exit(2)
     json.dump(groups, open(LATEST, "w"), ensure_ascii=False, indent=1)
-    print("OK: %d постов из %d/%d сабов → %s" % (total, ok_subs, len(SUBS), os.path.relpath(LATEST, HERE)))
+    print("OK: %d posts from %d/%d subs → %s" % (total, ok_subs, len(SUBS), os.path.relpath(LATEST, HERE)))
 
 
 if __name__ == "__main__":

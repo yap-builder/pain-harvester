@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""«Собиратель» — недельный внешний выпуск pain-harvester (P0 #4).
+"""The "Collector" — weekly public issue of pain-harvester (P0 #4).
 
-Читает out/reddit-pain-ai.json (боли, прошедшие гейт дословной цитаты), группирует
-в темы (Haiku один проход; --no-ai или сбой → каждая боль сама себе тема) и пишет:
-  out/weekly/issue-<YYYY>-W<WW>.json  — данные выпуска (источник правды)
-  out/weekly/issue-<YYYY>-W<WW>.txt   — выжимка для DM (цитаты + ссылки, без имитации голоса)
-  out/weekly/issue-<YYYY>-W<WW>.html  — статичная страница (без JS)
-  out/weekly/latest.html              — копия свежего
-Рамка текста: «с чем бьётся dev-сообщество на неделе» — сервис другим, без первого лица.
+Reads out/reddit-pain-ai.json (pains that passed the verbatim-quote gate), groups
+them into themes (one Haiku pass; --no-ai or failure → every pain is its own theme) and writes:
+  out/weekly/issue-<YYYY>-W<WW>.json  — issue data (source of truth)
+  out/weekly/issue-<YYYY>-W<WW>.txt   — digest for DM (quotes + links, no voice imitation)
+  out/weekly/issue-<YYYY>-W<WW>.html  — static page (no JS)
+  out/weekly/latest.html              — copy of the latest
+Framing: "what the dev community is struggling with this week" — a service to others, no first person.
 """
 import argparse
 import datetime
@@ -17,7 +17,7 @@ import os
 import shutil
 
 def safe_url(u):
-    """Ссылка из чужого поста идёт в href только с http(s)-схемой — иначе '#' (анти-XSS)."""
+    """A link from someone else's post goes into href only with an http(s) scheme — otherwise '#' (anti-XSS)."""
     return u if isinstance(u, str) and u.startswith(("http://", "https://")) else "#"
 
 from reddit_ai_score import source_label, run_claude, parse_batch
@@ -28,10 +28,10 @@ WEEKLY = os.path.join(OUT, "weekly")
 TOP_N = 5
 
 
-# --- чистая логика (тесты в test_weekly_issue.py) ---------------------------
+# --- pure logic (tests in test_weekly_issue.py) -----------------------------
 
 def identity_themes(pains):
-    """Фолбэк и v0: каждая боль — своя тема; ярлык = формулировка боли."""
+    """Fallback and v0: every pain is its own theme; label = the pain wording."""
     return [{"label": (p.get("ai_reason") or "").strip() or (p.get("evidence_quote") or "")[:60],
              "members": [i]} for i, p in enumerate(pains)]
 
@@ -56,8 +56,8 @@ def build_theme_prompt(pains):
 
 
 def validate_themes(raw, n):
-    """Чистим ответ модели: только целые id в [0,n), без повторов между темами,
-    группы без ярлыка/членов выбрасываются. Возвращает (темы, непокрытые id)."""
+    """Clean the model's answer: only integer ids in [0,n), no repeats across themes,
+    groups without a label/members are dropped. Returns (themes, uncovered ids)."""
     seen, out = set(), []
     for t in (raw if isinstance(raw, list) else []):
         if not isinstance(t, dict):
@@ -68,8 +68,8 @@ def validate_themes(raw, n):
             if (isinstance(m, int) and not isinstance(m, bool)
                     and 0 <= m < n and m not in seen and m not in ms):
                 ms.append(m)
-        # id помечаем покрытыми ТОЛЬКО если группа сохранена: члены выброшенной
-        # (безымянной) группы должны уйти в identity-фолбэк, а не пропасть из выпуска.
+        # ids are marked covered ONLY if the group is kept: members of a dropped
+        # (unnamed) group must go to the identity fallback, not vanish from the issue.
         if label and ms:
             seen.update(ms)
             out.append({"label": label, "members": ms})
@@ -78,7 +78,7 @@ def validate_themes(raw, n):
 
 
 def build_themes(pains, use_ai=True, runner=run_claude):
-    """Один Haiku-проход (КАП: без embeddings). Любой сбой → identity-фолбэк."""
+    """One Haiku pass (CAP: no embeddings). Any failure → identity fallback."""
     if not use_ai:
         return identity_themes(pains)
     try:
@@ -87,19 +87,19 @@ def build_themes(pains, use_ai=True, runner=run_claude):
         ident = identity_themes(pains)
         return themes + [ident[i] for i in uncovered]
     except Exception as ex:
-        print("темы: фолбэк identity (%s)" % str(ex)[:120])
+        print("themes: identity fallback (%s)" % str(ex)[:120])
         return identity_themes(pains)
 
 
 def representative(theme, pains):
-    """Сильнейший член темы: max (ai_score, эвристический score)."""
+    """Strongest member of the theme: max (ai_score, heuristic score)."""
     best = max(theme["members"],
                key=lambda i: ((pains[i].get("ai_score") or 0), pains[i].get("score", 0)))
     return pains[best]
 
 
 def issue_data(pains, themes, top_n=TOP_N, week=""):
-    """Топ-N тем: больше людей → выше; при равенстве — острее боль."""
+    """Top-N themes: more people → higher; on a tie — the sharper pain wins."""
     ordered = sorted(themes, key=lambda t: (
         -len(t["members"]),
         -max((pains[i].get("ai_score") or 0) for i in t["members"])))
@@ -109,14 +109,14 @@ def issue_data(pains, themes, top_n=TOP_N, week=""):
         out.append({"label": t["label"], "count": len(t["members"]),
                     "quote": rep.get("evidence_quote", ""), "url": rep.get("url", ""),
                     "source": source_label(rep), "ai_score": rep.get("ai_score"),
-                    # пруф счётчика: «N×» проверяемо только если члены группы названы (URL каждого)
+                    # proof for the counter: "N×" is verifiable only if group members are named (URL of each)
                     "members": [{"url": pains[i].get("url", ""),
                                  "source": source_label(pains[i])} for i in t["members"]]})
     return {"week": week, "pains_total": len(pains), "themes": out}
 
 
 def render_txt(issue):
-    """Выжимка для DM: голые факты, цитаты, ссылки. Ни слова от первого лица."""
+    """Digest for DM: bare facts, quotes, links. Not a word in the first person."""
     lines = ["What the dev community is struggling with, week %s — top-%d pains, each with a verbatim quote:"
              % (issue["week"], len(issue["themes"])), ""]
     for i, t in enumerate(issue["themes"], 1):
@@ -128,11 +128,11 @@ def render_txt(issue):
     return "\n".join(lines)
 
 
-WORDMARK = "PAINWEEKLY"   # плейсхолдер названия — заменить на финальное имя (см. отчёт)
+WORDMARK = "PAINWEEKLY"   # placeholder name — replace with the final name (see report)
 
-# Скин N1×N2 «тёплый минимал + брутал-характер» (свап 07-04, его «свайпай» после
-# фидбэка «шумно»): светлая воздушная база, моно только в акцентах, красный сдержанный.
-# Без JS, самодостаточно. Прежний N2-брутализм — в design/ и .bak, вернуть легко.
+# N1×N2 skin "warm minimal + brutalist character" (swapped 07-04, his "swipe it" after
+# the "noisy" feedback): light airy base, mono only in accents, restrained red.
+# No JS, self-contained. The previous N2 brutalism lives in design/ and .bak, easy to bring back.
 _BRUTAL_CSS = """
 :root{--bg:#fbfbf9;--ink:#0b0b0b;--soft:#54524d;--faint:#9a978e;--line:#e7e5df;--acc:#e8402f}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -172,14 +172,14 @@ blockquote::before{content:"\\201C"}blockquote::after{content:"\\201D"}
 
 
 def strip_src_emoji(source):
-    """Снять ведущий цветной кружок (🔴/🟠) из тега источника — в N2-скине чистый текст."""
+    """Strip the leading colored dot (🔴/🟠) from the source tag — the N2 skin uses plain text."""
     s = source or ""
     return s.split(" ", 1)[1] if s[:1] in ("\U0001F534", "\U0001F7E0") else s
 
 
 def render_html(issue):
-    """Статичная страница выпуска, скин N1×N2 (свап 07-04). Без JS,
-    самодостаточно. Цитаты и ссылки — только из источника, всё экранируется."""
+    """Static issue page, N1×N2 skin (swapped 07-04). No JS,
+    self-contained. Quotes and links come only from the source, everything is escaped."""
     e = html.escape
     week = e(issue["week"])
     n = len(issue["themes"])
@@ -215,18 +215,18 @@ def render_html(issue):
     return head + top + "\n".join(items) + foot + "</div></body></html>"
 
 
-# --- оркестрация -------------------------------------------------------------
+# --- orchestration -----------------------------------------------------------
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="собиратель: недельный выпуск болей")
+    ap = argparse.ArgumentParser(description="collector: weekly issue of pains")
     ap.add_argument("--in", dest="inp", default=os.path.join(OUT, "reddit-pain-ai.json"))
     ap.add_argument("--top", type=int, default=TOP_N)
-    ap.add_argument("--no-ai", action="store_true", help="без Haiku-группировки (identity-темы)")
+    ap.add_argument("--no-ai", action="store_true", help="skip Haiku grouping (identity themes)")
     args = ap.parse_args(argv)
 
     pains = json.load(open(args.inp, encoding="utf-8"))
     if not pains:
-        raise SystemExit("нет болей в %s — сперва прогони reddit_ai_score.py" % args.inp)
+        raise SystemExit("no pains in %s — run reddit_ai_score.py first" % args.inp)
     iso = datetime.date.today().isocalendar()
     week = "%d-W%02d" % (iso[0], iso[1])
     themes = build_themes(pains, use_ai=not args.no_ai)
@@ -239,7 +239,7 @@ def main(argv=None):
     page = render_html(issue)
     open(base + ".html", "w", encoding="utf-8").write(page)
     shutil.copyfile(base + ".html", os.path.join(WEEKLY, "latest.html"))
-    print("OK выпуск %s: болей %d → тем %d → топ-%d · файлы %s.{json,txt,html}"
+    print("OK issue %s: pains %d → themes %d → top-%d · files %s.{json,txt,html}"
           % (week, len(pains), len(themes), len(issue["themes"]), base))
 
 

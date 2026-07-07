@@ -1,39 +1,39 @@
 #!/usr/bin/env python3
-"""Отложенный AI-скорер для reddit-ветки pain-harvester.
+"""Deferred AI scorer for the reddit branch of pain-harvester.
 
-Второй проход поверх детерминированного `reddit_build.py`: Haiku судит верхушку
-эвристических кандидатов и оставляет только настоящие конкретные боли — КАЖДУЮ
-обязан подтвердить дословной цитатой из текста поста. Цитата не находится в
-источнике → боль выбрасывается (гейт против выдумки).
+Second pass on top of the deterministic `reddit_build.py`: Haiku judges the top
+heuristic candidates and keeps only real, specific pains — EACH one must be
+confirmed by a verbatim quote from the post text. Quote not found in the
+source → the pain is dropped (gate against fabrication).
 
-Считает через подписку: `claude -p --model claude-haiku-4-5` (без API-ключа, без
-SDK). reddit_build.py не трогаем.
+Runs on the subscription: `claude -p --model claude-haiku-4-5` (no API key, no
+SDK). reddit_build.py is left untouched.
 """
 import re
 
-# --- чистое ядро (тестируется без вызова claude) ---------------------------
+# --- pure core (tested without calling claude) ------------------------------
 
 
 def normalize(text):
-    """lower + схлопнуть любые пробелы в один, обрезать края."""
+    """lower + collapse any whitespace into one space, trim edges."""
     return re.sub(r"\s+", " ", text or "").strip().lower()
 
 
 def quote_in_source(quote, source):
-    """Гейт подлинности: непустая цитата дословно (по нормализации) есть в тексте."""
+    """Authenticity gate: a non-empty quote is present verbatim (after normalization) in the text."""
     nq = normalize(quote)
     return bool(nq) and nq in normalize(source)
 
 
 def split_headline_body(text):
-    """cand['title'] = заголовок + '\n\n' + тело (так строят reddit_build и parse_hnse).
-    Возвращает (headline, body); разделителя нет → (text, '')."""
+    """cand['title'] = headline + '\n\n' + body (as built by reddit_build and parse_hnse).
+    Returns (headline, body); no separator → (text, '')."""
     parts = (text or "").split("\n\n", 1)
     return parts[0], (parts[1] if len(parts) > 1 else "")
 
 
 def is_title_echo(quote, headline):
-    """Цитата ≈ заголовку (в любую сторону по вхождению) = не пруф, а эхо."""
+    """Quote ≈ headline (substring match in either direction) = not proof, but an echo."""
     nq, nh = normalize(quote), normalize(headline)
     return bool(nq) and bool(nh) and (nq in nh or nh in nq)
 
@@ -44,25 +44,25 @@ PROMO_RE = re.compile(
 
 
 def looks_promo(headline):
-    """Детерминированный отсев промо/запусков ДО трат на скоринг (P0 #2).
-    Ловит префиксы; замаскированное промо добивает ужесточённый промпт (второй рубеж)."""
+    """Deterministic filter for promos/launches BEFORE spending on scoring (P0 #2).
+    Catches prefixes; disguised promo is finished off by the hardened prompt (second line of defense)."""
     return bool(PROMO_RE.search(headline or ""))
 
 
 def parse_batch(raw):
-    """Достать JSON-массив из ответа модели (терпим прозу/код-фенсы вокруг).
+    """Extract the JSON array from the model's reply (tolerating prose/code fences around it).
 
-    Поднимает ValueError, если массива в тексте нет (отказ модели / мусор).
+    Raises ValueError if there is no array in the text (model refusal / garbage).
     """
     import json
 
     candidates = []
     s = (raw or "").strip()
     candidates.append(s)
-    # содержимое код-фенсов ```...```
+    # contents of ```...``` code fences
     for m in re.finditer(r"```(?:json)?\s*(.*?)```", s, re.S):
         candidates.append(m.group(1).strip())
-    # грубый срез от первой [ до последней ]
+    # rough slice from the first [ to the last ]
     i, j = s.find("["), s.rfind("]")
     if i != -1 and j != -1 and j > i:
         candidates.append(s[i:j + 1])
@@ -74,13 +74,13 @@ def parse_batch(raw):
             continue
         if isinstance(data, list):
             return data
-    raise ValueError("в ответе модели нет JSON-массива")
+    raise ValueError("no JSON array in the model reply")
 
 
 def merge_verdicts(candidates, verdicts):
-    """Сшить вердикты Haiku с источником по id, применить keep + гейт цитаты.
+    """Stitch Haiku verdicts to the source by id, apply keep + the quote gate.
 
-    Возвращает (kept, counts). `url` всегда из источника, не от модели.
+    Returns (kept, counts). `url` always comes from the source, never from the model.
     """
     counts = {"kept": 0, "dropped_ai_no": 0, "dropped_no_quote": 0, "dropped_title_echo": 0, "malformed": 0}
     kept = []
@@ -108,25 +108,25 @@ def merge_verdicts(candidates, verdicts):
         item["ai_score"] = v.get("ai_score")
         item["ai_reason"] = v.get("reason", "")
         item["evidence_quote"] = quote
-        item["url"] = cand.get("url")  # из источника, гарантированно реальный
+        item["url"] = cand.get("url")  # from the source, guaranteed real
         kept.append(item)
         counts["kept"] += 1
     return kept, counts
 
 
 def select_candidates(items, top):
-    """Только bucket=='cand', сорт по эвристик-score ↓, срез top (None = все)."""
+    """Only bucket=='cand', sorted by heuristic score ↓, sliced to top (None = all)."""
     cands = [x for x in items if x.get("bucket") == "cand"]
     cands.sort(key=lambda x: -x.get("score", 0))
     return cands if top is None else cands[:top]
 
 
 def parse_hnse(md_text):
-    """Адаптер HN/SE-дайджеста (.md от fetch_pain.py) → форма скорера.
+    """Adapter: HN/SE digest (.md from fetch_pain.py) → the scorer's shape.
 
-    Текст для AI и для гейта цитаты = title + quote (merge_verdicts валидирует по
-    полю title). `score` из meta для ранжира, origin/sources для тега источника,
-    bucket='cand' — чтобы select_candidates его подхватил.
+    Text for the AI and for the quote gate = title + quote (merge_verdicts validates
+    against the title field). `score` from meta for ranking, origin/sources for the
+    source tag, bucket='cand' so select_candidates picks it up.
     """
     import digest_to_html
 
@@ -148,16 +148,16 @@ def parse_hnse(md_text):
 
 
 def select_hnse(items, top, include_se=False):
-    """Отбор HN/SE-кандидатов. По умолчанию ТОЛЬКО HN (живые боли); SE паркуется —
-    его единственный ранжир (голоса SO) тащит наверх каноничные решённые вопросы, не
-    боли. include_se=True возвращает SE обратно в общий ранжир (когда будет боль-сигнал).
+    """Select HN/SE candidates. By default HN ONLY (live pains); SE is parked —
+    its only ranking signal (SO votes) pulls up canonical solved questions, not
+    pains. include_se=True brings SE back into the shared ranking (once there is a pain signal).
     """
     pool = items if include_se else [x for x in items if x.get("origin") == "hn"]
     return select_candidates(pool, top)
 
 
 def source_label(item):
-    """Тег источника: 🔴 r/<sub> для reddit (дефолт), 🟠 <site> для HN/SE."""
+    """Source tag: 🔴 r/<sub> for reddit (default), 🟠 <site> for HN/SE."""
     origin = item.get("origin") or "reddit"
     srcs = item.get("sources") or []
     if origin == "reddit":
@@ -167,11 +167,11 @@ def source_label(item):
     return (tag + " " + body) if body else tag
 
 
-# --- промпт + вызов Haiku ---------------------------------------------------
+# --- prompt + Haiku call -----------------------------------------------------
 
-MODEL = "claude-haiku-4-5"          # claude-api skill; Haiku effort НЕ поддерживает
+MODEL = "claude-haiku-4-5"          # claude-api skill; Haiku does NOT support effort
 BATCH_SIZE = 8
-POST_CAP = 1000                     # урезаем текст поста в промпте (валидация — по полному title)
+POST_CAP = 1000                     # trim post text in the prompt (validation uses the full title)
 
 PROMPT_HEADER = """\
 You judge posts from developer forums (Reddit, Hacker News, StackExchange) for GENUINE, SPECIFIC pain that someone would pay to solve.
@@ -198,7 +198,7 @@ POSTS:
 
 
 def build_prompt(batch):
-    """Промпт с пронумерованными постами (текст урезан) + требование строгого JSON."""
+    """Prompt with numbered posts (text trimmed) + strict JSON requirement."""
     parts = [PROMPT_HEADER]
     for i, p in enumerate(batch):
         text = (p.get("title", "") or "")[:POST_CAP]
@@ -207,7 +207,7 @@ def build_prompt(batch):
 
 
 def run_claude(prompt, model=MODEL):
-    """Вызов Haiku по подписке: claude -p (без API-ключа, без тулзов). Возвращает текст."""
+    """Call Haiku on the subscription: claude -p (no API key, no tools). Returns text."""
     import subprocess
 
     proc = subprocess.run(
@@ -220,11 +220,11 @@ def run_claude(prompt, model=MODEL):
 
 
 def score_batch(batch, runner=run_claude, model=MODEL):
-    """Собрать промпт → позвать модель → распарсить JSON-вердикты."""
+    """Build the prompt → call the model → parse the JSON verdicts."""
     return parse_batch(runner(build_prompt(batch), model))
 
 
-# --- рендер статичной страницы ----------------------------------------------
+# --- static page rendering ---------------------------------------------------
 
 _STYLE = """:root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;font:15px/1.5 -apple-system,system-ui,sans-serif;background:#0d1117;color:#e6edf3}
@@ -249,7 +249,7 @@ details[open] summary::before{content:"▾"}
 
 
 def cards_html(items):
-    """Карточки по ai_score (5→1). ЗАГОЛОВОК = сама боль (reason); цитата = пруф под ней."""
+    """Cards by ai_score (5→1). HEADLINE = the pain itself (reason); quote = proof beneath it."""
     import html
     try:
         import reddit_build
@@ -262,13 +262,13 @@ def cards_html(items):
         quote = it.get("evidence_quote", "")
         hl = highlight(quote)
         proof = hl if hl else e(quote[:240])
-        pain = e(it.get("ai_reason") or "(без формулировки)")
+        pain = e(it.get("ai_reason") or "(no wording)")
         url = e(it.get("url") or "")
         src = source_label(it)
         return ('<article class="card">'
                 '<a class="t" href="%s" target="_blank" rel="noopener">★%s %s</a>'
                 '<div class="proof">%s</div>'
-                '<div class="meta">%s · → открыть пост</div></article>'
+                '<div class="meta">%s · → open post</div></article>'
                 % (url, e(str(it.get("ai_score"))), pain, proof, e(src)))
 
     groups, secs = {}, []
@@ -277,33 +277,33 @@ def cards_html(items):
     for k, (sc, xs) in enumerate(sorted(groups.items(), key=lambda kv: -kv[0])):
         opn = " open" if k == 0 else ""
         body = "".join(card(x) for x in xs)
-        secs.append('<details%s><summary><span>★%s боль</span>'
+        secs.append('<details%s><summary><span>★%s pain</span>'
                     '<span class="n">%d</span></summary>%s</details>'
                     % (opn, e(str(sc)), len(xs), body))
     return "\n".join(secs)
 
 
 def render(items, title):
-    """Статичный файл reddit-pain-ai.html (прямое открытие / бэкап)."""
+    """Static reddit-pain-ai.html file (direct open / backup)."""
     import html
     e = html.escape
     return ("""<!doctype html><html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s</title><style>%s</style></head><body>
-<header><h1>%s</h1><div class="sub">%d болей · подтверждены цитатой · AI-проход Haiku · без скриптов</div></header>
+<header><h1>%s</h1><div class="sub">%d pains · confirmed by quote · Haiku AI pass · no scripts</div></header>
 <main>%s</main></body></html>""" % (e(title), _STYLE, e(title), len(items), cards_html(items)))
 
 
 def view_page(items, meta):
-    """Живая страница: полоска прогона + список (боль-заголовком) + свёрнутая история."""
+    """Live page: run status bar + list (pain as headline) + collapsed history."""
     import html
     e = html.escape
     running = bool(meta.get("running"))
     refresh = '<meta http-equiv="refresh" content="5">' if running else ""
     if running:
-        status = '<span class="run">⏳ идёт прогон…</span>'
+        status = '<span class="run">⏳ run in progress…</span>'
     else:
-        status = "обновлено %s · %s болей" % (e(str(meta.get("updated", "?"))), e(str(meta.get("n", 0))))
+        status = "updated %s · %s pains" % (e(str(meta.get("updated", "?"))), e(str(meta.get("n", 0))))
 
     rows = []
     for rn in (meta.get("runs") or [])[::-1][:5]:
@@ -312,25 +312,25 @@ def view_page(items, meta):
             e(str(rn.get("started_at", "?"))), e(str(rn.get("status", "?"))),
             e(str(c.get("kept", "–"))), e(str(c.get("dropped_no_quote", "–"))),
             e(str(c.get("dropped_ai_no", "–")))))
-    history = ('<details class="more"><summary>последние прогоны</summary>'
-               '<div class="meta">%s</div></details>' % ("".join(rows) or "пока пусто"))
+    history = ('<details class="more"><summary>recent runs</summary>'
+               '<div class="meta">%s</div></details>' % ("".join(rows) or "empty so far"))
 
     digest = meta.get("digest")
-    digest_link = ('<a href="%s">HN+SE дайджест →</a>' % e(digest)) if digest else ""
-    body = cards_html(items) or '<div class="card">пусто — нажми «прогнать сейчас»</div>'
+    digest_link = ('<a href="%s">HN+SE digest →</a>' % e(digest)) if digest else ""
+    body = cards_html(items) or '<div class="card">empty — press "run now"</div>'
     return ("""<!doctype html><html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">%s
-<title>боли · reddit + HN/SE</title><style>%s</style></head><body>
-<header><h1>боли · reddit + HN/SE</h1><div class="sub">%s</div></header>
-<div class="strip"><a href="/run">▶ прогнать сейчас</a><a href="reddit-pain.html">reddit-триаж →</a>%s</div>
+<title>pains · reddit + HN/SE</title><style>%s</style></head><body>
+<header><h1>pains · reddit + HN/SE</h1><div class="sub">%s</div></header>
+<div class="strip"><a href="/run">▶ run now</a><a href="reddit-pain.html">reddit triage →</a>%s</div>
 <main>%s
 %s</main></body></html>""" % (refresh, _STYLE, status, digest_link, body, history))
 
 
-# --- лог прогонов + умный ежедневный ----------------------------------------
+# --- run log + smart daily ----------------------------------------------------
 
 def source_hash(path):
-    """sha256 файла-источника; нет файла → ''."""
+    """sha256 of the source file; no file → ''."""
     import hashlib
     try:
         with open(path, "rb") as f:
@@ -340,10 +340,10 @@ def source_hash(path):
 
 
 def sources_hash(paths):
-    """Комбинированный sha256 нескольких источников; нет файла → стабильный маркер.
+    """Combined sha256 of several sources; missing file → a stable marker.
 
-    Разделитель между файлами → порядок и границы значимы (один источник изменился —
-    общий хэш меняется).
+    Separator between files → order and boundaries matter (one source changed —
+    the combined hash changes).
     """
     import hashlib
 
@@ -359,7 +359,7 @@ def sources_hash(paths):
 
 
 def should_run(current_hash, last_hash):
-    """Гнать, если источник изменился с прошлого завершённого прогона."""
+    """Run if the source has changed since the last completed run."""
     return current_hash != last_hash
 
 
@@ -386,14 +386,14 @@ def trim_runs(runs, n):
 
 
 def last_run_hash(runs):
-    """Хэш источника на момент последнего завершённого (done/skipped) прогона."""
+    """Source hash at the time of the last completed (done/skipped) run."""
     for rn in reversed(runs):
         if rn.get("status") in ("done", "skipped") and rn.get("source_hash"):
             return rn["source_hash"]
     return ""
 
 
-# --- оркестрация ------------------------------------------------------------
+# --- orchestration ------------------------------------------------------------
 
 def main(argv=None):
     import argparse
@@ -406,19 +406,19 @@ def main(argv=None):
     runs_path = os.path.join(out, "ai-runs.json")
     lock_path = os.path.join(out, ".ai-run.lock")
 
-    ap = argparse.ArgumentParser(description="AI-скорер reddit-кандидатов (Haiku, по подписке)")
+    ap = argparse.ArgumentParser(description="AI scorer for reddit candidates (Haiku, on subscription)")
     ap.add_argument("--in", dest="inp", default=os.path.join(out, "reddit-pain.json"))
-    ap.add_argument("--top", type=int, default=None, help="сколько верхних reddit-кандидатов (дефолт — все)")
+    ap.add_argument("--top", type=int, default=None, help="how many top reddit candidates (default — all)")
     ap.add_argument("--hn-se", dest="hnse", default=None,
-                    help="HN/SE дайджест .md (дефолт — последний out/*pain-core20.md)")
-    ap.add_argument("--hnse-top", type=int, default=40, help="сколько верхних HN-карточек по score")
+                    help="HN/SE digest .md (default — the latest out/*pain-core20.md)")
+    ap.add_argument("--hnse-top", type=int, default=40, help="how many top HN cards by score")
     ap.add_argument("--include-se", action="store_true",
-                    help="вернуть SE в проход (по умолчанию только HN — голоса SO ≠ боль)")
+                    help="bring SE back into the pass (HN only by default — SO votes ≠ pain)")
     ap.add_argument("--batch", type=int, default=BATCH_SIZE)
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--if-changed", action="store_true",
-                    help="гнать только если reddit-pain.json изменился с прошлого прогона")
-    ap.add_argument("--trigger", default="cli", help="источник запуска (manual/cron/cli)")
+                    help="run only if reddit-pain.json changed since the last run")
+    ap.add_argument("--trigger", default="cli", help="launch trigger (manual/cron/cli)")
     args = ap.parse_args(argv)
 
     def now():
@@ -443,20 +443,20 @@ def main(argv=None):
     runs = load_runs()
     cur_hash = sources_hash([args.inp, hnse_path or ""])
 
-    # умный ежедневный: ни один источник не менялся → пропуск, токены не жжём
+    # smart daily: no source changed → skip, do not burn tokens
     if args.if_changed and not should_run(cur_hash, last_run_hash(runs)):
         rec = new_run(now(), args.trigger, cur_hash, now())
         rec["status"], rec["finished_at"] = "skipped", now()
         runs.append(rec)
         save_runs(runs)
-        print("пропуск: источники (reddit + HN/SE) не менялись с прошлого прогона")
+        print("skip: sources (reddit + HN/SE) unchanged since the last run")
         return
 
-    # замок от наложения (двойной тап / кнопка+крон)
+    # lock against overlap (double tap / button+cron)
     try:
         os.close(os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
     except FileExistsError:
-        raise SystemExit("уже идёт прогон (замок %s)" % lock_path)
+        raise SystemExit("a run is already in progress (lock %s)" % lock_path)
 
     run_id = now()
     runs.append(new_run(run_id, args.trigger, cur_hash, now()))
@@ -473,11 +473,11 @@ def main(argv=None):
         pre = len(cands)
         cands = [c for c in cands if not looks_promo(split_headline_body(c.get("title", ""))[0])]
         dropped_promo = pre - len(cands)
-        print("промо-префильтр: −%d" % dropped_promo)
+        print("promo pre-filter: −%d" % dropped_promo)
         if not cands:
-            raise RuntimeError("нет кандидатов: reddit %s + HN/SE %s" % (args.inp, hnse_path or "—"))
+            raise RuntimeError("no candidates: reddit %s + HN/SE %s" % (args.inp, hnse_path or "—"))
         hn_lbl = "HN+SE" if args.include_se else "HN"
-        print("вход: reddit %d + %s %d = %d кандидатов" % (len(reddit_cands), hn_lbl, len(hnse_cands), len(cands)))
+        print("input: reddit %d + %s %d = %d candidates" % (len(reddit_cands), hn_lbl, len(hnse_cands), len(cands)))
 
         kept_all = []
         total = {"kept": 0, "dropped_ai_no": 0, "dropped_no_quote": 0, "dropped_title_echo": 0, "malformed": 0, "batch_errors": 0}
@@ -485,9 +485,9 @@ def main(argv=None):
             batch = cands[i:i + args.batch]
             try:
                 verdicts = score_batch(batch, model=args.model)
-            except Exception as ex:       # claude недоступен / не-JSON / таймаут
+            except Exception as ex:       # claude unavailable / non-JSON / timeout
                 total["batch_errors"] += 1
-                print("  пачка %d-%d: пропущена (%s)" % (i, i + len(batch) - 1, str(ex)[:120]))
+                print("  batch %d-%d: skipped (%s)" % (i, i + len(batch) - 1, str(ex)[:120]))
                 continue
             kept, counts = merge_verdicts(batch, verdicts)
             kept_all.extend(kept)
@@ -498,15 +498,15 @@ def main(argv=None):
         json.dump(kept_all, open(os.path.join(out, "reddit-pain-ai.json"), "w"),
                   ensure_ascii=False, indent=1)
         open(os.path.join(out, "reddit-pain-ai.html"), "w", encoding="utf-8").write(
-            render(kept_all, "боли AI (reddit + HN/SE) — подтверждённые цитатой"))
+            render(kept_all, "AI pains (reddit + HN/SE) — confirmed by quote"))
 
         finish_run(runs, run_id, "done", now(), counts=total)
-        print("OK: вход %d → ✅%d (с цитатой) · ❌%d AI-нет · 🗑%d без цитаты · "
-              "🪞%d эхо-заголовка · ⚠️%d мусор · 💥%d ошибок"
+        print("OK: input %d → ✅%d (with quote) · ❌%d AI-no · 🗑%d no quote · "
+              "🪞%d title echo · ⚠️%d malformed · 💥%d errors"
               % (len(cands), total["kept"], total["dropped_ai_no"],
                  total["dropped_no_quote"], total["dropped_title_echo"],
                  total["malformed"], total["batch_errors"]))
-        print("файлы: out/reddit-pain-ai.json + out/reddit-pain-ai.html")
+        print("files: out/reddit-pain-ai.json + out/reddit-pain-ai.html")
     except Exception as ex:
         finish_run(runs, run_id, "error", now(), error=str(ex)[:200])
         raise

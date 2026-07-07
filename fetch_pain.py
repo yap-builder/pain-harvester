@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-fetch_pain.py — сборщик болей с Hacker News + StackExchange.
+fetch_pain.py — pain harvester for Hacker News + StackExchange.
 
-Зачем: этап 1 pain-mining (Reddit API закрыт для соло → пивот на открытые источники).
-Тянет посты/комменты по фразам-болям, делает markdown-дайджест «карточек боли»
-для разбора на /raw в 00-raw.
+Why: stage 1 of pain-mining (Reddit API is closed to solo devs → pivot to open sources).
+Pulls posts/comments matching pain phrases and builds a markdown digest of "pain cards"
+for review via /raw in 00-raw.
 
-Принципы:
-- Только stdlib (без pip) — заводится на любом python3, в т.ч. на Hermes.
-- Ключи НЕ нужны. StackExchange: 300 запросов/день/IP без ключа (ключ опционален, поднимает квоту).
-- Без LLM — чистая добыча (суждение отдельно, на /raw).
-- ЗАКОН ДАННЫХ: карточка = verbatim-цитата + URL, или НЕ пишется. Ничего не сочиняется.
+Principles:
+- stdlib only (no pip) — runs on any python3, including on Hermes.
+- No API keys needed. StackExchange: 300 requests/day/IP without a key (key optional, raises quota).
+- No LLM — pure extraction (judgment happens separately, in /raw).
+- DATA LAW: a card = verbatim quote + URL, or it is NOT written. Nothing is invented.
 
-Примеры:
+Examples:
   python3 fetch_pain.py --queries "is there a tool for,how do you deal with" --limit 10
   python3 fetch_pain.py --queries @pain-queries.txt --sources hn,se \
         --se-sites stackoverflow --min-points 5 --out ./out --label agents
@@ -30,7 +30,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from urllib.error import URLError, HTTPError
 
-# Etiquette: StackExchange просит опознаваемый User-Agent. Подставь свой контакт.
+# Etiquette: StackExchange asks for an identifiable User-Agent. Put your own contact here.
 USER_AGENT = "pain-harvester/0.1 (personal pain-mining research)"
 
 HN_API = "https://hn.algolia.com/api/v1/search"
@@ -38,7 +38,7 @@ SE_API = "https://api.stackexchange.com/2.3/search/advanced"
 
 
 def _get(url, timeout=25):
-    """GET → JSON. Снимает gzip (SE всегда жмёт; sniff по magic-байтам на всякий)."""
+    """GET → JSON. Decompresses gzip (SE always compresses; sniff magic bytes just in case)."""
     req = Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
     with urlopen(req, timeout=timeout) as r:
         raw = r.read()
@@ -49,7 +49,7 @@ def _get(url, timeout=25):
 
 
 def clean(text):
-    """HTML → плоский текст, схлопнуть пробелы. Verbatim (без перефраза), только разметку снимаем."""
+    """HTML → flat text, collapse whitespace. Verbatim (no paraphrasing), only markup is stripped."""
     if not text:
         return ""
     text = html.unescape(text)
@@ -66,12 +66,12 @@ def epoch_to_date(ts):
         return ""
 
 
-# ---------- Hacker News (Algolia HN Search API, без ключа) ----------
+# ---------- Hacker News (Algolia HN Search API, no key) ----------
 def hn_item_url(hit):
-    """Ссылка карточки. Комментарий → story-страница с якорем #comment_id:
-    прямые пермалинки комментариев HN агрессивно рейт-лимитит (HTTP 429, страница
-    «Sorry.», проверено 2026-07-02), story-страницы отдаёт спокойно, и читатель
-    получает контекст треда. Якорь работает, пока комментарий на первой странице."""
+    """Card link. Comment → story page with a #comment_id anchor:
+    HN aggressively rate-limits direct comment permalinks (HTTP 429, "Sorry."
+    page, verified 2026-07-02), while story pages are served fine, and the reader
+    gets thread context. The anchor works as long as the comment is on page one."""
     oid = hit.get("objectID")
     story = hit.get("story_id")
     if hit.get("comment_text") and story:
@@ -85,7 +85,7 @@ def fetch_hn(query, limit=20, min_points=0, kind="(story,comment)", days=0):
     if min_points:
         nf.append(f"points>={int(min_points)}")
     if days:
-        # свежесть: без этого фильтра «выпуск недели» тянул посты 2023 года (пойман ревью 07-05)
+        # freshness: without this filter the "weekly issue" pulled posts from 2023 (caught in review 07-05)
         since = int(datetime.now(timezone.utc).timestamp()) - int(days) * 86400
         nf.append(f"created_at_i>={since}")
     if nf:
@@ -96,7 +96,7 @@ def fetch_hn(query, limit=20, min_points=0, kind="(story,comment)", days=0):
         quote = clean(h.get("comment_text") or h.get("story_text") or h.get("title"))
         oid = h.get("objectID")
         if not quote or not oid:
-            continue  # нет текста или нет id → нет карточки
+            continue  # no text or no id → no card
         cards.append({
             "source": "HN",
             "title": clean(h.get("story_title") or h.get("title") or ""),
@@ -110,7 +110,7 @@ def fetch_hn(query, limit=20, min_points=0, kind="(story,comment)", days=0):
     return cards
 
 
-# ---------- StackExchange (API 2.3, без ключа) ----------
+# ---------- StackExchange (API 2.3, no key) ----------
 def fetch_se(query, site="stackoverflow", limit=20, min_score=0, key=None, days=0):
     params = {
         "order": "desc", "sort": "relevance", "q": query,
@@ -130,12 +130,12 @@ def fetch_se(query, site="stackoverflow", limit=20, min_score=0, key=None, days=
         title = clean(it.get("title"))
         link = it.get("link")
         if not title or not link:
-            continue  # без вопроса/URL → нет карточки
+            continue  # no question/URL → no card
         body = clean(it.get("body"))
         cards.append({
             "source": f"SE/{site}",
             "title": title,
-            "quote": title,                      # сам вопрос = verbatim сигнал боли
+            "quote": title,                      # the question itself = verbatim pain signal
             "body_excerpt": body[:400] + ("…" if len(body) > 400 else ""),
             "url": link,
             "score": it.get("score"),
@@ -143,13 +143,13 @@ def fetch_se(query, site="stackoverflow", limit=20, min_score=0, key=None, days=
             "date": epoch_to_date(it.get("creation_date")),
             "query": query,
         })
-    # вежливость к квоте SE
+    # politeness towards the SE quota
     if data.get("backoff"):
         time.sleep(int(data["backoff"]) + 1)
     return cards, data.get("quota_remaining")
 
 
-# ---------- дайджест ----------
+# ---------- digest ----------
 def write_digest(cards, out_dir, label):
     os.makedirs(out_dir, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -157,9 +157,9 @@ def write_digest(cards, out_dir, label):
     path = os.path.join(out_dir, f"{ts}-pain-{safe}.md")
     out = [
         f"# pain-harvest {ts} — {label or 'all'}",
-        f"_автоген `fetch_pain.py` · источники HN+SE · карточек: {len(cards)}_",
+        f"_autogenerated by `fetch_pain.py` · sources HN+SE · cards: {len(cards)}_",
         "",
-        "> правило: каждая карточка несёт verbatim-цитату и URL. Нет — не записана.",
+        "> rule: every card carries a verbatim quote and a URL. If not — it is not written.",
         "",
     ]
     written = 0
@@ -167,14 +167,14 @@ def write_digest(cards, out_dir, label):
         q = (c.get("quote") or "").strip()
         url = c.get("url")
         if not q or not url:
-            continue  # двойная страховка закона данных
+            continue  # double safeguard for the data law
         if len(q) > 600:
             q = q[:600].rstrip() + "…"
-        out.append(f"## [{c['source']}] {c.get('title') or '(без заголовка)'}")
+        out.append(f"## [{c['source']}] {c.get('title') or '(no title)'}")
         out.append(f"> {q}")
         if c.get("body_excerpt"):
             out.append(f"> ")
-            out.append(f"> _тело:_ {c['body_excerpt']}")
+            out.append(f"> _body:_ {c['body_excerpt']}")
         meta = f"— score {c.get('score')} · {c.get('date')} · matched `{c.get('query')}`"
         if c.get("author"):
             meta += f" · @{c['author']}"
@@ -199,25 +199,25 @@ def load_queries(arg):
 def main():
     ap = argparse.ArgumentParser(description="Pain-mining fetcher: HN + StackExchange")
     ap.add_argument("--queries", required=True,
-                    help="фразы через запятую ИЛИ @файл (одна фраза на строку)")
-    ap.add_argument("--sources", default="hn,se", help="hn,se (через запятую)")
+                    help="comma-separated phrases OR @file (one phrase per line)")
+    ap.add_argument("--sources", default="hn,se", help="hn,se (comma-separated)")
     ap.add_argument("--se-sites", default="stackoverflow",
-                    help="сайты StackExchange через запятую (stackoverflow,serverfault,...)")
-    ap.add_argument("--limit", type=int, default=20, help="карточек на запрос/источник")
-    ap.add_argument("--min-points", type=int, default=0, help="HN: минимум points")
-    ap.add_argument("--min-score", type=int, default=0, help="SE: минимум score")
+                    help="comma-separated StackExchange sites (stackoverflow,serverfault,...)")
+    ap.add_argument("--limit", type=int, default=20, help="cards per query/source")
+    ap.add_argument("--min-points", type=int, default=0, help="HN: minimum points")
+    ap.add_argument("--min-score", type=int, default=0, help="SE: minimum score")
     ap.add_argument("--se-key", default=os.environ.get("SE_KEY"),
-                    help="StackExchange key (опц., поднимает квоту; иначе 300/день/IP)")
-    ap.add_argument("--out", default="./out", help="папка дайджеста")
-    ap.add_argument("--label", default="", help="метка темы в имени файла")
-    ap.add_argument("--sleep", type=float, default=0.5, help="пауза между запросами, сек")
+                    help="StackExchange key (optional, raises quota; otherwise 300/day/IP)")
+    ap.add_argument("--out", default="./out", help="digest folder")
+    ap.add_argument("--label", default="", help="topic label in the filename")
+    ap.add_argument("--sleep", type=float, default=0.5, help="pause between requests, seconds")
     ap.add_argument("--days", type=int, default=14,
-                    help="свежесть: только посты за N дней (0 = без фильтра)")
+                    help="freshness: only posts from the last N days (0 = no filter)")
     args = ap.parse_args()
 
     queries = load_queries(args.queries)
     if not queries:
-        sys.exit("нет запросов")
+        sys.exit("no queries")
     sources = {s.strip() for s in args.sources.split(",") if s.strip()}
     se_sites = [s.strip() for s in args.se_sites.split(",") if s.strip()]
 
@@ -245,7 +245,7 @@ def main():
                 time.sleep(args.sleep)
 
     path, written = write_digest(all_cards, args.out, args.label)
-    print(f"OK: {written} карточек → {path}")
+    print(f"OK: {written} cards → {path}")
 
 
 if __name__ == "__main__":

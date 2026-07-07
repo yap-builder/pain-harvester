@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Живой сервер reddit-pain на :8772 — чистый список + кнопка прогона.
+"""Live reddit-pain server on :8772 — clean list + a run button.
 
-Без JS: интерактив через ссылки + <meta refresh> (смотрелка не исполняет скрипты).
-Тонкий слой поверх reddit_ai_score (вся логика/рендер — там, под тестами).
-Маршруты:
-  GET /                 → чистый AI-список (боль-заголовком) + полоска + история
-  GET /run              → фоновый прогон (если не идёт), редирект на /
-  GET /<file>           → статика из out/ (слой 1: reddit-pain.html и т.д.)
+No JS: interactivity via links + <meta refresh> (the viewer does not execute scripts).
+Thin layer on top of reddit_ai_score (all logic/rendering lives there, under tests).
+Routes:
+  GET /                 → clean AI list (pain as headline) + status bar + history
+  GET /run              → background run (if not already running), redirect to /
+  GET /<file>           → static files from out/ (layer 1: reddit-pain.html etc.)
 """
 import datetime
 import http.server
@@ -42,7 +42,7 @@ def _meta():
         updated = datetime.datetime.fromtimestamp(os.path.getmtime(AI_JSON)).strftime("%d.%m %H:%M")
     except OSError:
         pass
-    digests = sorted(glob.glob(os.path.join(OUT, "*pain-core20.html")))  # последний по дате
+    digests = sorted(glob.glob(os.path.join(OUT, "*pain-core20.html")))  # latest by date
     return items, {"updated": updated, "n": len(items),
                    "running": os.path.exists(LOCK), "runs": runs,
                    "digest": os.path.basename(digests[-1]) if digests else ""}
@@ -68,18 +68,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._send_html(scorer.view_page(items, meta))
             return
         if path == "/run":
-            if not os.path.exists(LOCK):       # замок занят → не плодим прогоны
+            if not os.path.exists(LOCK):       # lock is held → do not spawn extra runs
                 logf = open(os.path.join(OUT, "ai-run.log"), "a")
                 subprocess.Popen([sys.executable, SCRIPT, "--trigger", "manual"],
                                  cwd=HERE, stdout=logf, stderr=logf, start_new_session=True)
-                logf.close()                   # ребёнок держит свою копию; без close текла ручка на каждый /run
+                logf.close()                   # the child holds its own copy; without close a handle leaked on every /run
             self.send_response(302)
             self.send_header("Location", "/")
             self.end_headers()
             return
-        return super().do_GET()                # статика из out/
+        return super().do_GET()                # static files from out/
 
-    def log_message(self, *a):                 # тихий лог
+    def log_message(self, *a):                 # quiet log
         pass
 
 
