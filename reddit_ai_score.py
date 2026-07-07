@@ -287,7 +287,7 @@ def render(items, title):
     """Static reddit-pain-ai.html file (direct open / backup)."""
     import html
     e = html.escape
-    return ("""<!doctype html><html lang="ru"><head>
+    return ("""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>%s</title><style>%s</style></head><body>
 <header><h1>%s</h1><div class="sub">%d pains · confirmed by quote · Haiku AI pass · no scripts</div></header>
@@ -318,7 +318,7 @@ def view_page(items, meta):
     digest = meta.get("digest")
     digest_link = ('<a href="%s">HN+SE digest →</a>' % e(digest)) if digest else ""
     body = cards_html(items) or '<div class="card">empty — press "run now"</div>'
-    return ("""<!doctype html><html lang="ru"><head>
+    return ("""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">%s
 <title>pains · reddit + HN/SE</title><style>%s</style></head><body>
 <header><h1>pains · reddit + HN/SE</h1><div class="sub">%s</div></header>
